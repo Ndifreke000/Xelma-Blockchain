@@ -59,7 +59,9 @@
                 {
                   "u128": "10000000"
                 },
-                "void"
+                {
+                  "u32": 0
+                }
               ]
             }
           },
@@ -71,7 +73,7 @@
   ],
   "ledger": {
     "protocol_version": 23,
-    "sequence_number": 6,
+    "sequence_number": 0,
     "timestamp": 0,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
     "base_reserve": 0,

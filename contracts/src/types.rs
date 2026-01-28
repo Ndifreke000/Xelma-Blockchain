@@ -24,6 +24,8 @@ pub enum DataKey {
     PrecisionPositions,   // Vec<PrecisionPrediction> for Precision mode
     PendingWinnings(Address),
     UserStats(Address),
+    BetWindowLedgers,     // Bet window duration in ledgers
+    RunWindowLedgers,     // Run window duration in ledgers
 }
 
 /// Represents which side a user bet on
@@ -63,6 +65,8 @@ pub struct PrecisionPrediction {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Round {
     pub price_start: u128,   // Starting XLM price in stroops
+    pub start_ledger: u32,   // Ledger when round was created
+    pub bet_end_ledger: u32, // Ledger when betting closes
     pub end_ledger: u32,     // Ledger when round ends (~5s per ledger)
     pub pool_up: i128,       // Total vXLM bet on UP
     pub pool_down: i128,     // Total vXLM bet on DOWN

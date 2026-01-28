@@ -19,7 +19,7 @@ fn test_create_round_default_mode() {
     client.initialize(&admin, &oracle);
 
     // Create round without specifying mode (should default to UpDown)
-    client.create_round(&1_0000000, &100, &None);
+    client.create_round(&1_0000000, &None);
 
     let round = client.get_active_round().unwrap();
     assert_eq!(round.mode, RoundMode::UpDown);
@@ -39,7 +39,7 @@ fn test_create_round_updown_mode_explicit() {
     client.initialize(&admin, &oracle);
 
     // Create round with explicit Up/Down mode (0)
-    client.create_round(&1_0000000, &100, &Some(0));
+    client.create_round(&1_0000000, &Some(0));
 
     let round = client.get_active_round().unwrap();
     assert_eq!(round.mode, RoundMode::UpDown);
@@ -59,7 +59,7 @@ fn test_create_round_precision_mode() {
     client.initialize(&admin, &oracle);
 
     // Create round with Precision mode (1)
-    client.create_round(&1_0000000, &100, &Some(1));
+    client.create_round(&1_0000000, &Some(1));
 
     let round = client.get_active_round().unwrap();
     assert_eq!(round.mode, RoundMode::Precision);
@@ -79,7 +79,7 @@ fn test_create_round_invalid_mode() {
     client.initialize(&admin, &oracle);
 
     // Try to create round with invalid mode (2)
-    let result = client.try_create_round(&1_0000000, &100, &Some(2));
+    let result = client.try_create_round(&1_0000000, &Some(2));
     assert_eq!(result, Err(Ok(ContractError::InvalidMode)));
 }
 
@@ -99,7 +99,7 @@ fn test_place_bet_on_updown_mode() {
     client.mint_initial(&user);
 
     // Create Up/Down round
-    client.create_round(&1_0000000, &100, &Some(0));
+    client.create_round(&1_0000000, &Some(0));
 
     // Place bet should work
     client.place_bet(&user, &100_0000000, &BetSide::Up);
@@ -125,7 +125,7 @@ fn test_place_bet_on_precision_mode_fails() {
     client.mint_initial(&user);
 
     // Create Precision round
-    client.create_round(&1_0000000, &100, &Some(1));
+    client.create_round(&1_0000000, &Some(1));
 
     // place_bet should fail on Precision mode
     let result = client.try_place_bet(&user, &100_0000000, &BetSide::Up);
@@ -148,7 +148,7 @@ fn test_place_precision_prediction_on_precision_mode() {
     client.mint_initial(&user);
 
     // Create Precision round
-    client.create_round(&1_0000000, &100, &Some(1));
+    client.create_round(&1_0000000, &Some(1));
 
     // Place precision prediction (predicted price: 0.2297 scaled to 4 decimals = 2297)
     client.place_precision_prediction(&user, &100_0000000, &2297);
@@ -178,7 +178,7 @@ fn test_place_precision_prediction_on_updown_mode_fails() {
     client.mint_initial(&user);
 
     // Create Up/Down round
-    client.create_round(&1_0000000, &100, &Some(0));
+    client.create_round(&1_0000000, &Some(0));
 
     // place_precision_prediction should fail on Up/Down mode
     let result = client.try_place_precision_prediction(&user, &100_0000000, &2297);
@@ -201,7 +201,7 @@ fn test_precision_prediction_already_bet() {
     client.mint_initial(&user);
 
     // Create Precision round
-    client.create_round(&1_0000000, &100, &Some(1));
+    client.create_round(&1_0000000, &Some(1));
 
     // First prediction succeeds
     client.place_precision_prediction(&user, &100_0000000, &2297);
@@ -229,7 +229,7 @@ fn test_get_precision_predictions() {
     client.mint_initial(&bob);
 
     // Create Precision round
-    client.create_round(&1_0000000, &100, &Some(1));
+    client.create_round(&1_0000000, &Some(1));
 
     // Multiple users place predictions
     client.place_precision_prediction(&alice, &100_0000000, &2297);
@@ -270,7 +270,7 @@ fn test_get_updown_positions() {
     client.mint_initial(&bob);
 
     // Create Up/Down round
-    client.create_round(&1_0000000, &100, &Some(0));
+    client.create_round(&1_0000000, &Some(0));
 
     // Multiple users place bets
     client.place_bet(&alice, &100_0000000, &BetSide::Up);
@@ -307,7 +307,7 @@ fn test_precision_insufficient_balance() {
     client.mint_initial(&user); // Has 1000 vXLM
 
     // Create Precision round
-    client.create_round(&1_0000000, &100, &Some(1));
+    client.create_round(&1_0000000, &Some(1));
 
     // Try to bet more than balance
     let result = client.try_place_precision_prediction(&user, &2000_0000000, &2297);
@@ -333,15 +333,15 @@ fn test_precision_round_ended() {
     client.initialize(&admin, &oracle);
     client.mint_initial(&user);
 
-    // Create Precision round that ends at ledger 50
-    client.create_round(&1_0000000, &50, &Some(1));
+    // Create Precision round (default bet window is 6 ledgers)
+    client.create_round(&1_0000000, &Some(1));
 
-    // Advance ledger past end time
+    // Advance ledger past bet window (bet closes at ledger 6)
     env.ledger().with_mut(|li| {
-        li.sequence_number = 100;
+        li.sequence_number = 6;
     });
 
-    // Try to place prediction after round ended
+    // Try to place prediction after bet window closed
     let result = client.try_place_precision_prediction(&user, &100_0000000, &2297);
     assert_eq!(result, Err(Ok(ContractError::RoundEnded)));
 }
@@ -362,7 +362,7 @@ fn test_precision_invalid_amount() {
     client.mint_initial(&user);
 
     // Create Precision round
-    client.create_round(&1_0000000, &100, &Some(1));
+    client.create_round(&1_0000000, &Some(1));
 
     // Try to bet 0 amount
     let result = client.try_place_precision_prediction(&user, &0, &2297);
