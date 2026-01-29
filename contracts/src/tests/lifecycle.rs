@@ -3,7 +3,7 @@
 use crate::contract::{VirtualTokenContract, VirtualTokenContractClient};
 use crate::errors::ContractError;
 use crate::types::{BetSide, DataKey, Round, UserPosition};
-use soroban_sdk::{testutils::Address as _, Address, Env, Map};
+use soroban_sdk::{testutils::{Address as _, Ledger as _}, Address, Env, Map};
 
 #[test]
 fn test_create_round() {
@@ -19,9 +19,8 @@ fn test_create_round() {
     
     // Create a round
     let start_price: u128 = 1_5000000; // 1.5 XLM in stroops
-    let duration: u32 = 60; // 60 ledgers
     
-    client.create_round(&start_price, &duration, &None);
+    client.create_round(&start_price, &None);
     
     // Verify the round was created
     let round = client.get_active_round().expect("Round should exist");
@@ -30,9 +29,10 @@ fn test_create_round() {
     assert_eq!(round.pool_up, 0);
     assert_eq!(round.pool_down, 0);
     
-    // Verify end_ledger is set correctly (current ledger + duration)
+    // Verify windows are set correctly (defaults: bet=6, run=12)
     // Note: In tests, current ledger starts at 0
-    assert_eq!(round.end_ledger, duration);
+    assert_eq!(round.bet_end_ledger, 6);
+    assert_eq!(round.end_ledger, 12);
 }
 
 #[test]
@@ -44,7 +44,7 @@ fn test_create_round_without_init_fails() {
     env.mock_all_auths();
     
     // Try to create round without initializing - should return error
-    let result = client.try_create_round(&1_0000000, &60, &None);
+    let result = client.try_create_round(&1_0000000, &None);
     assert_eq!(result, Err(Ok(ContractError::AdminNotSet)));
 }
 
@@ -89,7 +89,7 @@ fn test_full_round_lifecycle() {
     
     // STEP 3: Admin creates a round
     let start_price: u128 = 1_0000000; // 1.0 XLM
-    client.create_round(&start_price, &100, &None);
+    client.create_round(&start_price, &None);
     
     let round = client.get_active_round().unwrap();
     assert_eq!(round.price_start, start_price);
@@ -117,6 +117,10 @@ fn test_full_round_lifecycle() {
     assert_eq!(round.pool_down, 150_0000000);
     
     // STEP 5: Oracle resolves round (price went UP)
+    // Advance ledger to allow resolution
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 12; // Default run window is 12
+    });
     let final_price: u128 = 1_5000000; // 1.5 XLM
     client.resolve_round(&final_price);
     
@@ -173,7 +177,7 @@ fn test_multiple_rounds_lifecycle() {
     client.mint_initial(&alice);
     
     // ROUND 1: Alice bets UP and wins
-    client.create_round(&1_0000000, &100, &None);
+    client.create_round(&1_0000000, &None);
     client.place_bet(&alice, &100_0000000, &BetSide::Up);
     
     env.as_contract(&contract_id, || {
@@ -190,6 +194,10 @@ fn test_multiple_rounds_lifecycle() {
         env.storage().persistent().set(&DataKey::ActiveRound, &round);
     });
     
+    // Advance ledger to allow resolution
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 12;
+    });
     client.resolve_round(&1_5000000); // UP wins
     client.claim_winnings(&alice);
     
@@ -198,7 +206,7 @@ fn test_multiple_rounds_lifecycle() {
     assert_eq!(stats.current_streak, 1);
     
     // ROUND 2: Alice bets DOWN and wins again
-    client.create_round(&2_0000000, &100, &None);
+    client.create_round(&2_0000000, &None);
     client.place_bet(&alice, &100_0000000, &BetSide::Down);
     
     env.as_contract(&contract_id, || {
@@ -215,6 +223,10 @@ fn test_multiple_rounds_lifecycle() {
         env.storage().persistent().set(&DataKey::ActiveRound, &round);
     });
     
+    // Advance ledger to allow resolution
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 24; // 12 + 12 for second round
+    });
     client.resolve_round(&1_5000000); // DOWN wins
     
     let stats = client.get_user_stats(&alice);

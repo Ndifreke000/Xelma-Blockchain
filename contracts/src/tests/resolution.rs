@@ -3,7 +3,7 @@
 use crate::contract::{VirtualTokenContract, VirtualTokenContractClient};
 use crate::errors::ContractError;
 use crate::types::{BetSide, DataKey, Round, UserPosition};
-use soroban_sdk::{testutils::Address as _, Address, Env, Map};
+use soroban_sdk::{testutils::{Address as _, Ledger as _}, Address, Env, Map};
 
 #[test]
 fn test_resolve_round_price_unchanged() {
@@ -19,7 +19,7 @@ fn test_resolve_round_price_unchanged() {
     
     // Create a round with start price 1.5 XLM
     let start_price: u128 = 1_5000000;
-    client.create_round(&start_price, &60, &None);
+    client.create_round(&start_price, &None);
     
     // Manually set up some test positions using env.as_contract
     let user1 = Address::generate(&env);
@@ -55,6 +55,10 @@ fn test_resolve_round_price_unchanged() {
     let user1_balance_before = client.balance(&user1);
     let user2_balance_before = client.balance(&user2);
     
+    // Advance ledger to allow resolution (default run window is 12)
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 12;
+    });
     // Resolve with SAME price (unchanged)
     client.resolve_round(&start_price);
     
@@ -91,7 +95,7 @@ fn test_resolve_round_price_went_up() {
     
     // Create a round with start price 1.0 XLM
     let start_price: u128 = 1_0000000;
-    client.create_round(&start_price, &60, &None);
+    client.create_round(&start_price, &None);
     
     // Set up test users
     let alice = Address::generate(&env);
@@ -131,6 +135,10 @@ fn test_resolve_round_price_went_up() {
     let bob_before = client.balance(&bob);
     let charlie_before = client.balance(&charlie);
     
+    // Advance ledger to allow resolution
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 12;
+    });
     // Resolve with HIGHER price (1.5 XLM - price went UP)
     client.resolve_round(&1_5000000);
     
@@ -171,7 +179,7 @@ fn test_resolve_round_price_went_down() {
     
     // Create a round with start price 2.0 XLM
     let start_price: u128 = 2_0000000;
-    client.create_round(&start_price, &60, &None);
+    client.create_round(&start_price, &None);
     
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
@@ -202,6 +210,10 @@ fn test_resolve_round_price_went_down() {
     let alice_before = client.balance(&alice);
     let bob_before = client.balance(&bob);
     
+    // Advance ledger to allow resolution
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 12;
+    });
     // Resolve with LOWER price (1.0 XLM - price went DOWN)
     client.resolve_round(&1_0000000);
     

@@ -37,5 +37,7 @@ pub enum ContractError {
     InvalidMode = 14,
     /// Wrong prediction type for current round mode
     WrongModeForPrediction = 15,
+    /// Round has not reached end_ledger yet
+    RoundNotEnded = 16,
 }
 

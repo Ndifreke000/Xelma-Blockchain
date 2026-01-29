@@ -19,7 +19,7 @@ fn test_place_bet_zero_amount() {
     
     client.initialize(&admin, &oracle);
     client.mint_initial(&user);
-    client.create_round(&1_0000000, &100, &None);
+    client.create_round(&1_0000000, &None);
     
     // Try to bet 0 amount - should return error
     let result = client.try_place_bet(&user, &0, &BetSide::Up);
@@ -40,7 +40,7 @@ fn test_place_bet_negative_amount() {
     
     client.initialize(&admin, &oracle);
     client.mint_initial(&user);
-    client.create_round(&1_0000000, &100, &None);
+    client.create_round(&1_0000000, &None);
     
     // Try to bet negative amount - should return error
     let result = client.try_place_bet(&user, &-100, &BetSide::Up);
@@ -86,15 +86,15 @@ fn test_place_bet_after_round_ended() {
     client.initialize(&admin, &oracle);
     client.mint_initial(&user);
     
-    // Create round that ends at ledger 50
-    client.create_round(&1_0000000, &50, &None);
+    // Create round (default bet window is 6 ledgers)
+    client.create_round(&1_0000000, &None);
     
-    // Advance ledger past end time
+    // Advance ledger past bet window (bet closes at ledger 6)
     env.ledger().with_mut(|li| {
-        li.sequence_number = 100;
+        li.sequence_number = 6;
     });
     
-    // Try to bet after round ended - should return error
+    // Try to bet after bet window closed - should return error
     let result = client.try_place_bet(&user, &100_0000000, &BetSide::Up);
     assert_eq!(result, Err(Ok(ContractError::RoundEnded)));
 }
@@ -113,7 +113,7 @@ fn test_place_bet_insufficient_balance() {
     
     client.initialize(&admin, &oracle);
     client.mint_initial(&user); // Has 1000 vXLM
-    client.create_round(&1_0000000, &100, &None);
+    client.create_round(&1_0000000, &None);
     
     // Try to bet more than balance - should return error
     let result = client.try_place_bet(&user, &2000_0000000, &BetSide::Up);
@@ -134,7 +134,7 @@ fn test_place_bet_twice_same_round() {
     
     client.initialize(&admin, &oracle);
     client.mint_initial(&user);
-    client.create_round(&1_0000000, &100, &None);
+    client.create_round(&1_0000000, &None);
     
     // First bet succeeds
     client.place_bet(&user, &100_0000000, &BetSide::Up);

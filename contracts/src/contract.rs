@@ -21,18 +21,18 @@ impl VirtualTokenContract {
         env.storage().persistent().set(&DataKey::Admin, &admin);
         env.storage().persistent().set(&DataKey::Oracle, &oracle);
         
+        // Set default window values
+        env.storage().persistent().set(&DataKey::BetWindowLedgers, &6u32);
+        env.storage().persistent().set(&DataKey::RunWindowLedgers, &12u32);
+        
         Ok(())
     }
     
     /// Creates a new prediction round (admin only)
     /// mode: 0 = Up/Down (default), 1 = Precision (Legends)
-    pub fn create_round(env: Env, start_price: u128, duration_ledgers: u32, mode: Option<u32>) -> Result<(), ContractError> {
+    pub fn create_round(env: Env, start_price: u128, mode: Option<u32>) -> Result<(), ContractError> {
         if start_price == 0 {
             return Err(ContractError::InvalidPrice);
-        }
-
-        if duration_ledgers == 0 || duration_ledgers > 100_000 {
-            return Err(ContractError::InvalidDuration);
         }
 
         // Default to Up/Down mode (0) if not specified
@@ -56,13 +56,28 @@ impl VirtualTokenContract {
 
         admin.require_auth();
 
-        let current_ledger = env.ledger().sequence();
-        let end_ledger = current_ledger
-            .checked_add(duration_ledgers)
+        // Get configured windows (with defaults)
+        let bet_ledgers: u32 = env.storage()
+            .persistent()
+            .get(&DataKey::BetWindowLedgers)
+            .unwrap_or(6);
+        let run_ledgers: u32 = env.storage()
+            .persistent()
+            .get(&DataKey::RunWindowLedgers)
+            .unwrap_or(12);
+
+        let start_ledger = env.ledger().sequence();
+        let bet_end_ledger = start_ledger
+            .checked_add(bet_ledgers)
+            .ok_or(ContractError::Overflow)?;
+        let end_ledger = start_ledger
+            .checked_add(run_ledgers)
             .ok_or(ContractError::Overflow)?;
 
         let round = Round {
             price_start: start_price,
+            start_ledger,
+            bet_end_ledger,
             end_ledger,
             pool_up: 0,
             pool_down: 0,
@@ -78,7 +93,7 @@ impl VirtualTokenContract {
         // Emit round creation event with mode
         env.events().publish(
             (symbol_short!("round"), symbol_short!("created")),
-            (start_price, end_ledger, mode_value),
+            (start_price, bet_end_ledger, end_ledger, mode_value),
         );
 
         Ok(())
@@ -95,6 +110,39 @@ impl VirtualTokenContract {
     
     pub fn get_oracle(env: Env) -> Option<Address> {
         env.storage().persistent().get(&DataKey::Oracle)
+    }
+    
+    /// Sets the betting and execution windows (admin only)
+    /// bet_ledgers: Number of ledgers users can place bets
+    /// run_ledgers: Total number of ledgers before round can be resolved
+    pub fn set_windows(env: Env, bet_ledgers: u32, run_ledgers: u32) -> Result<(), ContractError> {
+        let admin: Address = env.storage()
+            .persistent()
+            .get(&DataKey::Admin)
+            .ok_or(ContractError::AdminNotSet)?;
+        
+        admin.require_auth();
+        
+        // Validate both values are positive
+        if bet_ledgers == 0 || run_ledgers == 0 {
+            return Err(ContractError::InvalidDuration);
+        }
+        
+        // Validate bet window closes before run window ends
+        if bet_ledgers >= run_ledgers {
+            return Err(ContractError::InvalidDuration);
+        }
+        
+        env.storage().persistent().set(&DataKey::BetWindowLedgers, &bet_ledgers);
+        env.storage().persistent().set(&DataKey::RunWindowLedgers, &run_ledgers);
+        
+        // Emit event
+        env.events().publish(
+            (symbol_short!("windows"), symbol_short!("updated")),
+            (bet_ledgers, run_ledgers),
+        );
+        
+        Ok(())
     }
     
     /// Returns user statistics (wins, losses, streaks)
@@ -133,7 +181,7 @@ impl VirtualTokenContract {
         }
 
         let current_ledger = env.ledger().sequence();
-        if current_ledger >= round.end_ledger {
+        if current_ledger >= round.bet_end_ledger {
             return Err(ContractError::RoundEnded);
         }
 
@@ -215,7 +263,7 @@ impl VirtualTokenContract {
         }
 
         let current_ledger = env.ledger().sequence();
-        if current_ledger >= round.end_ledger {
+        if current_ledger >= round.bet_end_ledger {
             return Err(ContractError::RoundEnded);
         }
 
@@ -318,6 +366,12 @@ impl VirtualTokenContract {
             .persistent()
             .get(&DataKey::ActiveRound)
             .ok_or(ContractError::NoActiveRound)?;
+        
+        // Verify round has reached end_ledger
+        let current_ledger = env.ledger().sequence();
+        if current_ledger < round.end_ledger {
+            return Err(ContractError::RoundNotEnded);
+        }
         
         let positions: Map<Address, UserPosition> = env.storage()
             .persistent()
