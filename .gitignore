@@ -17,3 +17,12 @@ Cargo.lock
 # OS
 .DS_Store
 Thumbs.db
+
+# Backend files (separate repo)
+package.json
+package-lock.json
+tsconfig.json
+jest.config.js
+node_modules/
+dist/
+src/
